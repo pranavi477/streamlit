@@ -8,21 +8,24 @@ Original file is located at
 """
 
 import streamlit as st
-import fitz
+import fitz  # PyMuPDF
+import torch
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Load model once
+# Load the SentenceTransformer model on CPU
 @st.cache_resource(show_spinner=False)
 def load_model():
-    return SentenceTransformer('all-MiniLM-L6-v2')
+    return SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
 
 model = load_model()
 
+# Extract text from uploaded PDF
 def extract_text_from_pdf(file):
     doc = fitz.open(stream=file.read(), filetype="pdf")
     return ''.join([page.get_text() for page in doc])
 
+# Split text into manageable chunks
 def chunk_text(text, max_length=500):
     paragraphs = text.split("\n")
     chunks, current_chunk = [], ""
@@ -36,9 +39,11 @@ def chunk_text(text, max_length=500):
         chunks.append(current_chunk.strip())
     return chunks
 
+# Get embeddings for chunks of text
 def get_embeddings(chunks):
     return model.encode(chunks)
 
+# Answer the user's question based on the PDF
 def answer_question_from_pdf(pdf_file, question):
     text = extract_text_from_pdf(pdf_file)
     chunks = chunk_text(text)
@@ -48,15 +53,17 @@ def answer_question_from_pdf(pdf_file, question):
     top_indices = scores.argsort()[-3:][::-1]
     return "\n\n".join([chunks[i] for i in top_indices])
 
-# Streamlit UI
-st.title("PDF Question Answering App")
+# Streamlit interface
+st.title("📄 PDF Q&A Chatbot")
 
 uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
-question = st.text_input("Enter your question:")
+question = st.text_input("Ask a question about the PDF:")
 
 if uploaded_file and question:
-    with st.spinner("Processing..."):
-        answer = answer_question_from_pdf(uploaded_file, question)
-    st.subheader("Answer:")
-    st.write(answer)
-
+    with st.spinner("Searching for the answer..."):
+        try:
+            answer = answer_question_from_pdf(uploaded_file, question)
+            st.subheader("Answer:")
+            st.write(answer)
+        except Exception as e:
+            st.error(f"Something went wrong: {e}")

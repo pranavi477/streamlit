@@ -7,15 +7,20 @@ Original file is located at
     https://colab.research.google.com/drive/1j4VKE8SvCjKPd26TC4RQtb9fSIEgqmap
 """
 
+import streamlit as st
 import fitz
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Load model once
-model = SentenceTransformer('all-MiniLM-L6-v2')
+@st.cache_resource(show_spinner=False)
+def load_model():
+    return SentenceTransformer('all-MiniLM-L6-v2')
 
-def extract_text_from_pdf(file_path):
-    doc = fitz.open(file_path)
+model = load_model()
+
+def extract_text_from_pdf(file):
+    doc = fitz.open(stream=file.read(), filetype="pdf")
     return ''.join([page.get_text() for page in doc])
 
 def chunk_text(text, max_length=500):
@@ -34,13 +39,24 @@ def chunk_text(text, max_length=500):
 def get_embeddings(chunks):
     return model.encode(chunks)
 
-# Core logic to answer a question based on a PDF
-def answer_question_from_pdf(pdf_path, question):
-    text = extract_text_from_pdf(pdf_path)
+def answer_question_from_pdf(pdf_file, question):
+    text = extract_text_from_pdf(pdf_file)
     chunks = chunk_text(text)
     embeddings = get_embeddings(chunks)
     query_embedding = model.encode([question])
     scores = cosine_similarity([query_embedding[0]], embeddings)[0]
     top_indices = scores.argsort()[-3:][::-1]
     return "\n\n".join([chunks[i] for i in top_indices])
+
+# Streamlit UI
+st.title("PDF Question Answering App")
+
+uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+question = st.text_input("Enter your question:")
+
+if uploaded_file and question:
+    with st.spinner("Processing..."):
+        answer = answer_question_from_pdf(uploaded_file, question)
+    st.subheader("Answer:")
+    st.write(answer)
 
